@@ -1,12 +1,45 @@
 # researchflow
 
-`researchflow` is a command-line tool designed to streamline research workflows by automating notifications for script executions and generating AI-powered reviews of research papers.
+`researchflow` wraps a Python experiment with `alarm` and sends a Slack DM or channel message when the process finishes.
 
-_README in Korean can be found [here](readme_ko.md)._
+Korean README: [readme_ko.md](readme_ko.md)
 
-## 1\. Setup
+## Quick Setup
 
-First, clone the repository and install the necessary dependencies.
+For lab members, the Slack app and `.env` are already prepared. Install the package, set your Slack DM target, and send a test message:
+
+```bash
+pip install -e .
+alarm --setup "Your Slack Display Name"
+```
+
+If no user matches, inspect the exact Slack names:
+
+```bash
+alarm --list-slack-users
+```
+
+## Quick Usage
+
+Wrap any Python script with `alarm`. Arguments after the script path are passed to your script unchanged.
+
+```bash
+alarm script.py --your-arg value
+```
+
+Example test command:
+
+```bash
+alarm tests/fixtures/sample_experiment.py --epochs 1 --total-runtime-factor 0
+```
+
+Use `--log` to run in the background and save stdout/stderr:
+
+```bash
+alarm --log script.py --your-arg value
+```
+
+## Setup
 
 ```bash
 git clone https://github.com/mjk0618/researchflow.git
@@ -14,105 +47,147 @@ cd researchflow
 pip install -e .
 ```
 
-## 2\. Usage Examples
-
-### 2.1 alarm: Script Execution Notifier
-
-The `alarm` command executes a target Python script and sends a notification to a Slack channel with the results (e.g., success or failure, execution time, arguments).
-
-You can test the `alarm` functionality by running the sample script from the project's root directory:
+Set your default DM target:
 
 ```bash
-alarm examples/sample_script.py
+alarm --setup "Your Slack Display Name"
 ```
 
-  * **Background Execution (`--log`)**: Using the `--log` flag runs the script in the background and creates a log file, similar to `nohup`.
-
-  * **Reporting Arguments**: To include the script's arguments in the Slack notification, import and call the `report_arguments` function from `researchflow.core.utils` after parsing arguments in your script.
-
-    ```python
-    # In your script (e.g., examples/sample_script.py)
-    from researchflow.core.utils import report_arguments
-
-    def main():
-        # ... (argument parsing code)
-        args = parser.parse_args()
-        report_arguments(args) # Call this function
-        # ... (rest of your script)
-    ```
-
-### 2.2 review: AI-Powered Paper Reviewer
-
-The `review` command uses the Gemini API to review a research paper from an arXiv URL and sends a formatted summary to a Slack channel.
-
-  * `paper_input`: You must provide the arXiv URL for the paper you want to review.
-  * `--user-interests` (or `-u`): You can specify your research interests to tailor the review's evaluation.
-
-Here’s how to review the famous "Attention Is All You Need" paper:
+Check the saved config:
 
 ```bash
-# Basic review
-review https://arxiv.org/pdf/1706.03762
-
-# Review with user interests
-review https://arxiv.org/pdf/1706.03762 -u "LLM" "NLP"
+alarm --print-config
 ```
 
-*Note: The `review` feature is under development and may be unstable.*
+The user config is saved to:
 
-## 3\. Configuration
-
-### 3.1 Setting Up Environment Variables
-
-Environment variables are required for Slack notifications and Gemini API integration. Create a `.env` file in the root directory of the project and add your credentials as shown below.
-
-**Directory Structure:**
-
-```
-researchflow/
-├── examples
-├── pyproject.toml
-├── README.md
-├── researchflow
-└── .env (Create this file)
+```text
+~/.config/researchflow/config.json
 ```
 
-**`.env` file content:**
+## Logging
 
+`--log` writes stdout/stderr to a file and starts the script in the background.
+
+```bash
+alarm --log train.py --config configs/run.yaml
 ```
-SLACK_WEBHOOK_URL="YOUR_SLACK_WEBHOOK_URL"
-GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+
+Default log location:
+
+```text
+<script_dir>/logs/{YYYYMMDD_HHMMSS_KST}_{script_name}.log
 ```
 
-### 3.2 Obtaining a Slack Webhook URL
+Use a custom log directory for one run:
 
-Follow these steps to generate a Slack Webhook URL, which is required for the `alarm` and `review` commands to send messages to a Slack channel.
+```bash
+alarm --log --log-dir /path/to/researchflow_logs train.py
+```
 
-1.  **Create or Select a Slack App**:
-      * Navigate to the [Slack API website](https://api.slack.com/apps).
-      * Click "Create New App" or select an existing one.
-      * When creating a new app, choose "From scratch," provide an app name, and select your workspace.
-2.  **Enable Incoming Webhooks**:
-      * In the app's settings page, go to "Incoming Webhooks" under the "Features" section in the left sidebar.
-      * Toggle the "Activate Incoming Webhooks" switch to "On".
-3.  **Add a New Webhook URL**:
-      * Click the "Add New Webhook to Workspace" button.
-      * Choose the channel where messages will be posted and click "Allow."
-4.  **Copy the Webhook URL**:
-      * Copy the generated Webhook URL and paste it as the value for `SLACK_WEBHOOK_URL` in your `.env` file.
+Save a default log directory:
 
-For more details, refer to the official documentation on [Sending messages using Incoming Webhooks](https://api.slack.com/messaging/webhooks).
+```bash
+alarm --set-log-dir /path/to/researchflow_logs
+```
 
-### 3.3 Obtaining a Gemini API Key
+## Useful Commands
 
-An API key is necessary for the `review` command. Follow these steps to get your Gemini API key.
+Run without Slack:
 
-1.  **Go to Google AI Studio**:
-      * Visit the [Google AI Studio](https://aistudio.google.com/) website.
-2.  **Generate an API Key**:
-      * Click "Get API key" in the top right corner.
-      * On the next page, click "Create API key".
-3.  **Copy the API Key**:
-      * Copy the generated key and paste it as the value for `GEMINI_API_KEY` in your `.env` file.
+```bash
+alarm --destination off script.py
+```
 
-For more details, refer to the [Generative AI Quickstart guide](https://ai.google.dev/gemini-api/docs/api-key).
+Show resolved config with secrets masked:
+
+```bash
+alarm --print-config
+```
+
+Verify the current Slack target without sending an experiment message:
+
+```bash
+alarm --check-slack-target
+```
+
+Control GPU/process snapshot:
+
+```bash
+alarm --gpu-info script.py
+alarm --no-gpu-info script.py
+```
+
+`alarm` uses `nvidia-smi` when available and can include GPU name, VRAM usage, utilization, temperature, active compute PIDs, process owner, elapsed time, and command.
+
+Clean local test artifacts:
+
+```bash
+rm -rf test_artifacts
+```
+
+## Additional Features
+
+### Channel Target
+
+Most lab members should use DM setup. Channel posting is mainly for shared lab/admin notifications.
+
+```bash
+alarm --team-id T07CSJGATDW --list-slack-channels
+alarm --team-id T07CSJGATDW --channel C08RV70M4FM --check-slack-target
+```
+
+Send one run to a channel:
+
+```bash
+alarm \
+  --destination channel \
+  --channel C08RV70M4FM \
+  --team-id T07CSJGATDW \
+  script.py --your-arg value
+```
+
+For private channels, invite the bot first:
+
+```text
+/invite @researchflow
+```
+
+### Interactive Setup
+
+```bash
+alarm --team-id T07CSJGATDW --configure-slack
+alarm --team-id T07CSJGATDW --list-slack-users
+```
+
+### Slack App Setup
+
+For lab/private distribution, prepare `.env` before handing the package to users:
+
+```bash
+RESEARCHFLOW_SLACK_BOT_TOKEN="xoxb-..."
+RESEARCHFLOW_SLACK_TEAM_ID="T07CSJGATDW"
+```
+
+The shared Slack app needs these bot scopes:
+
+- `chat:write` to send messages
+- `im:write` to open DM conversations
+- `users:read` for `--setup` and user search
+- `channels:read` for public channel listing
+- `groups:read` for private channel listing
+
+After changing scopes, reinstall the Slack app to the workspace.
+
+Secrets such as `RESEARCHFLOW_SLACK_BOT_TOKEN` should stay in `.env` or server environment variables. Do not commit them to source code, README files, or package distributions.
+
+## Experiment Metadata
+
+To include parsed arguments in the Slack alarm, call `report_arguments` in your script:
+
+```python
+from researchflow.core.utils import report_arguments
+
+args = parser.parse_args()
+report_arguments(args)
+```

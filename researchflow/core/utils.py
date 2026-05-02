@@ -8,7 +8,18 @@ from typing import Union, Dict, Any
 
 from dotenv import load_dotenv
 
-from .constants import SLACK_WEBHOOK_ENV_KEY, GEMINI_API_KEY_ENV_KEY
+from .constants import (
+    LEGACY_SLACK_BOT_TOKEN_ENV_KEY,
+    LEGACY_SLACK_CHANNEL_ENV_KEY,
+    LEGACY_SLACK_USER_ID_ENV_KEY,
+    LOG_DIR_ENV_KEY,
+    SLACK_BOT_TOKEN_ENV_KEY,
+    SLACK_CHANNEL_ENV_KEY,
+    SLACK_DESTINATION_ENV_KEY,
+    SLACK_TEAM_ID_ENV_KEY,
+    SLACK_USER_ID_ENV_KEY,
+    SLACK_WEBHOOK_ENV_KEY,
+)
 from researchflow.alarm.constants import PARSED_ARGS_START_MARKER, PARSED_ARGS_END_MARKER
 
 _dotenv_loaded_globally = False
@@ -32,9 +43,29 @@ def get_slack_webhook_url_from_env():
     ensure_dotenv_is_loaded()
     return os.environ.get(SLACK_WEBHOOK_ENV_KEY)
 
-def get_gemini_api_key_from_env():
+def get_slack_bot_token_from_env():
     ensure_dotenv_is_loaded()
-    return os.environ.get(GEMINI_API_KEY_ENV_KEY)
+    return os.environ.get(SLACK_BOT_TOKEN_ENV_KEY) or os.environ.get(LEGACY_SLACK_BOT_TOKEN_ENV_KEY)
+
+def get_slack_channel_from_env():
+    ensure_dotenv_is_loaded()
+    return os.environ.get(SLACK_CHANNEL_ENV_KEY) or os.environ.get(LEGACY_SLACK_CHANNEL_ENV_KEY)
+
+def get_slack_user_id_from_env():
+    ensure_dotenv_is_loaded()
+    return os.environ.get(SLACK_USER_ID_ENV_KEY) or os.environ.get(LEGACY_SLACK_USER_ID_ENV_KEY)
+
+def get_slack_destination_from_env():
+    ensure_dotenv_is_loaded()
+    return os.environ.get(SLACK_DESTINATION_ENV_KEY)
+
+def get_slack_team_id_from_env():
+    ensure_dotenv_is_loaded()
+    return os.environ.get(SLACK_TEAM_ID_ENV_KEY)
+
+def get_log_dir_from_env():
+    ensure_dotenv_is_loaded()
+    return os.environ.get(LOG_DIR_ENV_KEY)
 
 
 def get_kst_timestamp_string(target_datetime: datetime = None, datetime_format_str: str = '%Y-%m-%d %H:%M:%S KST'):

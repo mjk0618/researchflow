@@ -1,7 +1,43 @@
 # researchflow
 
-## 1\. 설치
+`researchflow`는 Python 실험 스크립트를 `alarm`으로 감싸 실행하고, 프로세스가 끝났을 때 Slack DM 또는 채널 메시지를 보내는 CLI 도구입니다.
 
+## Quick Setup
+
+연구실 사용자는 Slack App과 `.env`가 이미 준비되어 있다고 가정합니다. 패키지를 설치하고, 내 Slack DM 대상을 설정한 뒤 테스트 메시지를 보냅니다.
+
+```bash
+pip install -e .
+alarm --setup "Slack 표시 이름"
+```
+
+사용자가 안 잡히면 실제 Slack 이름을 먼저 확인하세요.
+
+```bash
+alarm --list-slack-users
+```
+
+## Quick Usage
+
+Python script 앞에 `alarm`을 붙이면 됩니다. script path 뒤의 인자는 그대로 원래 script에 전달됩니다.
+
+```bash
+alarm script.py --your-arg value
+```
+
+테스트 명령:
+
+```bash
+alarm tests/fixtures/sample_experiment.py --epochs 1 --total-runtime-factor 0
+```
+
+`--log`를 붙이면 백그라운드로 실행하고 stdout/stderr를 로그 파일로 저장합니다.
+
+```bash
+alarm --log script.py --your-arg value
+```
+
+## Setup
 
 ```bash
 git clone https://github.com/mjk0618/researchflow.git
@@ -9,105 +45,147 @@ cd researchflow
 pip install -e .
 ```
 
-## 2\. 사용 예시
-
-### 2.1 alarm: 스크립트 실행 알림
-
-`alarm` 명령어는 대상 Python 스크립트의 실행 결과를 Slack 채널에 전송합니다.
-
-프로젝트의 Root Directory에서 샘플 스크립트를 실행하여 `alarm` 기능을 테스트할 수 있습니다:
+기본 DM 수신 대상 설정:
 
 ```bash
-alarm examples/sample_script.py
+alarm --setup "Slack 표시 이름"
 ```
 
-  * **백그라운드 실행 (`--log`)**: `--log` 플래그를 사용하면 스크립트가 백그라운드에서 실행되고 `nohup`과 유사하게 로그 파일이 생성됩니다.
-
-  * **명령줄 인자 출력**: Commandline arguments를 Slack 알림에 포함하려면, 스크립트에서 인자를 파싱한 후 `researchflow.core.utils`에서 `report_arguments` 함수를 불러온 후 호출하세요.
-
-    ```python
-    # 스크립트 내 (예: examples/sample_script.py)
-    from researchflow.core.utils import report_arguments
-
-    def main():
-        # ... (argument parsing 코드)
-        args = parser.parse_args()
-        report_arguments(args) # 이 함수를 호출하세요
-        # ... (나머지 코드)
-    ```
-
-### 2.2 review: AI 기반 논문 리뷰
-
-`review` 명령어는 Gemini API를 사용하여 arXiv URL의 연구 논문을 리뷰하고 그 결과를 Slack 채널로 전송합니다.
-
-  * `paper_input`: 리뷰하고자 하는 논문의 arXiv URL을 입력하세요.
-  * `--user-interests` (또는 `-u`): 사용자의 관심사를 반영한 논문 리뷰를 수행합니다.
-
-"Attention Is All You Need" 논문을 리뷰하는 예시입니다:
+저장된 설정 확인:
 
 ```bash
-# 기본 리뷰
-review https://arxiv.org/pdf/1706.03762
-
-# 관심사 기반 리뷰
-review https://arxiv.org/pdf/1706.03762 -u "LLM" "NLP"
+alarm --print-config
 ```
 
-*참고: `review` 기능은 불안정할 수 있습니다.*
+사용자 설정 파일 위치:
 
-## 3\. 설정
-
-### 3.1 환경 변수 설정
-
-Slack 알림 및 Gemini API 연동을 위해서는 환경 변수가 필요합니다. 프로젝트의 루트 디렉토리에 `.env` 파일을 생성하고 아래와 같이 환경 변수를 추가하세요.
-
-**디렉토리 구조:**
-
-```
-researchflow/
-├── examples
-├── pyproject.toml
-├── README.md
-├── researchflow
-└── .env (이 파일 생성)
+```text
+~/.config/researchflow/config.json
 ```
 
-**`.env` 파일 내용:**
+## Logging
 
+`--log`는 stdout/stderr를 파일로 저장하고 script를 백그라운드로 실행합니다.
+
+```bash
+alarm --log train.py --config configs/run.yaml
 ```
-SLACK_WEBHOOK_URL="YOUR_SLACK_WEBHOOK_URL"
-GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+
+기본 로그 저장 위치:
+
+```text
+<script_dir>/logs/{YYYYMMDD_HHMMSS_KST}_{script_name}.log
 ```
 
-### 3.2 Slack Webhook URL 얻기
+실행할 때마다 로그 디렉토리 지정:
 
-`alarm` 및 `review` 명령어가 Slack 채널로 메시지를 보내는 데 필요한 Slack 웹훅 URL을 생성하려면 다음 단계를 따르세요.
+```bash
+alarm --log --log-dir /path/to/researchflow_logs train.py
+```
 
-1.  **Slack 앱 생성 또는 선택**:
-      * [Slack API 웹사이트](https://api.slack.com/apps)로 이동합니다.
-      * "Create New App"을 클릭하거나 기존 앱을 선택합니다.
-      * 새 앱을 생성할 때 "From scratch"를 선택하고, 앱 이름을 제공한 후 워크스페이스를 선택합니다.
-2.  **Incoming Webhooks 활성화**:
-      * 앱 설정 페이지의 왼쪽 사이드바 "Features" 섹션 아래에 있는 "Incoming Webhooks"로 이동합니다.
-      * "Activate Incoming Webhooks" 스위치를 "On"으로 전환합니다.
-3.  **새 웹훅 URL 추가**:
-      * "Add New Webhook to Workspace" 버튼을 클릭합니다.
-      * 메시지가 게시될 채널을 선택하고 "Allow"를 클릭합니다.
-4.  **웹훅 URL 복사**:
-      * 생성된 웹훅 URL을 복사하여 `.env` 파일의 `SLACK_WEBHOOK_URL` 값으로 붙여넣습니다.
+기본 로그 디렉토리 저장:
 
-자세한 내용은 [Incoming Webhooks를 사용하여 메시지 보내기](https://api.slack.com/messaging/webhooks)에 대한 공식 문서를 참조하세요.
+```bash
+alarm --set-log-dir /path/to/researchflow_logs
+```
 
-### 3.3 Gemini API 키 얻기
+## Useful Commands
 
-`review` 명령어를 사용하려면 API 키가 필요합니다. Gemini API 키를 얻으려면 다음 단계를 따르세요.
+Slack 없이 실행:
 
-1.  **Google AI Studio로 이동**:
-      * [Google AI Studio](https://aistudio.google.com/) 웹사이트를 방문합니다.
-2.  **API 키 생성**:
-      * 오른쪽 상단에서 "Get API key"를 클릭합니다.
-      * 다음 페이지에서 "Create API key"를 클릭합니다.
-3.  **API 키 복사**:
-      * 생성된 키를 복사하여 `.env` 파일의 `GEMINI_API_KEY` 값으로 붙여넣습니다.
+```bash
+alarm --destination off script.py
+```
 
-자세한 내용은 [Generative AI Guide](https://ai.google.dev/gemini-api/docs/api-key)를 참조하세요.
+secret을 마스킹한 설정 확인:
+
+```bash
+alarm --print-config
+```
+
+메시지를 보내기 전에 현재 Slack target 확인:
+
+```bash
+alarm --check-slack-target
+```
+
+GPU/process snapshot 제어:
+
+```bash
+alarm --gpu-info script.py
+alarm --no-gpu-info script.py
+```
+
+`alarm`은 `nvidia-smi`가 있으면 GPU 이름, VRAM 사용량, utilization, temperature, active compute PID, process owner, elapsed time, command를 알림에 포함할 수 있습니다.
+
+테스트 산출물 삭제:
+
+```bash
+rm -rf test_artifacts
+```
+
+## 추가 기능
+
+### 채널 메시지 설정
+
+대부분의 연구실 사용자는 DM 설정을 쓰면 됩니다. 채널 메시지는 공용 알림이나 관리자용으로 사용합니다.
+
+```bash
+alarm --team-id T07CSJGATDW --list-slack-channels
+alarm --team-id T07CSJGATDW --channel C08RV70M4FM --check-slack-target
+```
+
+특정 run만 채널로 전송:
+
+```bash
+alarm \
+  --destination channel \
+  --channel C08RV70M4FM \
+  --team-id T07CSJGATDW \
+  script.py --your-arg value
+```
+
+private channel은 먼저 bot을 초대해야 합니다.
+
+```text
+/invite @researchflow
+```
+
+### Interactive Setup
+
+```bash
+alarm --team-id T07CSJGATDW --configure-slack
+alarm --team-id T07CSJGATDW --list-slack-users
+```
+
+### Slack App Setup
+
+연구실 private 배포 전에는 관리자가 `.env`를 준비합니다.
+
+```bash
+RESEARCHFLOW_SLACK_BOT_TOKEN="xoxb-..."
+RESEARCHFLOW_SLACK_TEAM_ID="T07CSJGATDW"
+```
+
+공용 Slack App에는 다음 bot scope가 필요합니다.
+
+- `chat:write`: 메시지 전송
+- `im:write`: DM conversation 열기
+- `users:read`: `--setup` 및 user 검색
+- `channels:read`: public channel 목록 조회
+- `groups:read`: private channel 목록 조회
+
+scope를 바꾼 뒤에는 Slack App을 workspace에 다시 reinstall 해야 합니다.
+
+`RESEARCHFLOW_SLACK_BOT_TOKEN` 같은 secret은 `.env` 또는 서버 환경변수에만 두세요. 소스 코드, README, 패키지 배포물에 포함하면 안 됩니다.
+
+## 실험 메타데이터
+
+Slack 알림에 argparse 결과를 포함하려면 실험 스크립트에서 `report_arguments`를 호출하세요.
+
+```python
+from researchflow.core.utils import report_arguments
+
+args = parser.parse_args()
+report_arguments(args)
+```

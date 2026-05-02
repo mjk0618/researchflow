@@ -1,6 +1,6 @@
 import sys
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import json
 import re
@@ -11,13 +11,16 @@ import traceback
 import socket
 from typing import List, Optional, Any, Dict
 
+from researchflow.core.config import ResearchFlowConfig, load_config
+from researchflow.core.gpu import collect_gpu_info, format_gpu_info_for_text
 from researchflow.core.utils import (
     get_kst_timestamp_string,
     format_script_duration,
-    get_slack_webhook_url_from_env
 )
 from researchflow.core.slack_sender import AlarmSlackSender
 from .constants import PARSED_ARGS_START_MARKER, PARSED_ARGS_END_MARKER
+
+INTERNAL_LOG_FILE_PATH_ENV_KEY = "_ALARM_LOG_FILE_PATH"
 
 
 def _stream_and_buffer_output(pipe: Optional[io.TextIOWrapper], stream: io.TextIOBase, buffer_list: list):
@@ -50,21 +53,46 @@ def _get_last_n_lines_from_file(file_path: str, n_lines: int = 50) -> str:
         return f"Could not read last lines from log file: {file_path}"
 
 
+def _get_kst_log_timestamp() -> str:
+    kst = timezone(timedelta(hours=9))
+    return datetime.now(tz=kst).strftime("%Y%m%d_%H%M%S_KST")
+
+
+def _resolve_log_file_path(target_script_full_path: str, log_dir: Optional[str] = None) -> str:
+    script_base_name = os.path.splitext(os.path.basename(target_script_full_path))[0]
+    log_file_name = f"{_get_kst_log_timestamp()}_{script_base_name}.log"
+
+    if log_dir:
+        base_log_dir = os.path.abspath(os.path.expanduser(log_dir))
+    else:
+        base_log_dir = os.path.join(os.path.dirname(target_script_full_path), "logs")
+    return os.path.join(base_log_dir, log_file_name)
+
+
 def execute_script_with_alarm(
         target_script_path: str,
         target_script_args: List[str],
         alarm_command_args_for_display: List[str],
-        enable_logging: bool = False
+        enable_logging: bool = False,
+        notification_config: Optional[ResearchFlowConfig] = None,
     ) -> int:
 
+    notification_config = notification_config or load_config()
+    try:
+        target_script_full_path = os.path.abspath(target_script_path)
+        if not os.path.isfile(target_script_full_path):
+            sys.stderr.write(f"[AlarmHandler] Error: Target script is not a file or does not exist: {target_script_full_path}\n")
+            return 1
+    except Exception as e:
+        sys.stderr.write(f"[AlarmHandler] Error resolving script path '{target_script_path}': {e}\n")
+        return 1
+
     if enable_logging and os.environ.get("_ALARM_INTERNAL_MONITOR") is None:
-        script_base_name = os.path.splitext(os.path.basename(target_script_path))[0]
-        timestamp_for_log = datetime.now().strftime('%Y%m%d_%H%M%S')
-        log_file_name = f"{script_base_name}_{timestamp_for_log}.log"
-        log_file_full_path = os.path.join(os.getcwd(), log_file_name)
+        log_file_full_path = _resolve_log_file_path(target_script_full_path, notification_config.log_dir)
 
         new_env = os.environ.copy()
         new_env["_ALARM_INTERNAL_MONITOR"] = "1"
+        new_env[INTERNAL_LOG_FILE_PATH_ENV_KEY] = log_file_full_path
         
         command_to_rerun = [sys.executable] + sys.argv
         
@@ -87,18 +115,14 @@ def execute_script_with_alarm(
         
         return 0
     
-    webhook_url = get_slack_webhook_url_from_env()
-    if not webhook_url:
-        sys.stderr.write("[AlarmHandler] Warning: SLACK_WEBHOOK_URL environment variable not set. Slack notification will be disabled.\n")
-
-    try:
-        target_script_full_path = os.path.abspath(target_script_path)
-        if not os.path.isfile(target_script_full_path):
-            sys.stderr.write(f"[AlarmHandler] Error: Target script is not a file or does not exist: {target_script_full_path}\n")
-            return 1
-    except Exception as e:
-        sys.stderr.write(f"[AlarmHandler] Error resolving script path '{target_script_path}': {e}\n")
-        return 1
+    if notification_config.slack_destination == "off":
+        sys.stdout.write("[AlarmHandler] Slack notification disabled by configuration.\n")
+    elif not any([
+        notification_config.slack_bot_token and notification_config.slack_channel,
+        notification_config.slack_bot_token and notification_config.slack_user_id,
+        notification_config.slack_webhook_url,
+    ]):
+        sys.stderr.write("[AlarmHandler] Warning: Slack destination is not configured. Slack notification will be skipped.\n")
 
     command = [sys.executable, target_script_full_path] + target_script_args
     
@@ -125,13 +149,14 @@ def execute_script_with_alarm(
     log_file_handle: Optional[io.TextIOWrapper] = None
 
     if enable_logging:
-        script_base_name = os.path.splitext(os.path.basename(target_script_full_path))[0]
-        timestamp_for_log = datetime.now().strftime('%Y%m%d_%H%M%S')
-        log_file_name = f"{script_base_name}_{timestamp_for_log}.log"
-        log_file_full_path = os.path.join(os.getcwd(), log_file_name)
+        log_file_full_path = os.environ.get(INTERNAL_LOG_FILE_PATH_ENV_KEY) or _resolve_log_file_path(
+            target_script_full_path,
+            notification_config.log_dir,
+        )
         
         sys.stdout.write(f"[AlarmHandler] Logging stdout/stderr to: {log_file_full_path}\n")
         try:
+            os.makedirs(os.path.dirname(log_file_full_path), exist_ok=True)
             log_file_handle = open(log_file_full_path, 'w', encoding='utf-8', errors='replace')
             popen_kwargs["stdout"] = log_file_handle
             popen_kwargs["stderr"] = subprocess.STDOUT
@@ -254,7 +279,11 @@ def execute_script_with_alarm(
             log_file_handle.close()
 
 
-    if webhook_url:
+    gpu_info_text: Optional[str] = None
+    if notification_config.include_gpu:
+        gpu_info_text = format_gpu_info_for_text(collect_gpu_info())
+
+    if notification_config.slack_destination != "off":
         sys.stdout.write("\n[AlarmHandler] Sending Slack notification...\n")
         
         hostname = ""
@@ -266,7 +295,7 @@ def execute_script_with_alarm(
             except Exception:
                 hostname = "N/A"
         
-        sender = AlarmSlackSender(webhook_url=webhook_url)
+        sender = AlarmSlackSender(config=notification_config)
         sender.send_alarm_notification(
             script_name=os.path.basename(target_script_full_path),
             status=status,
@@ -279,9 +308,10 @@ def execute_script_with_alarm(
             executed_command_str=executed_command_display,
             parsed_args_dict=parsed_args_dict,
             error_output_str=error_message_for_slack,
-            log_file_path_str=log_file_full_path if enable_logging else None 
+            log_file_path_str=log_file_full_path if enable_logging else None,
+            gpu_info_text=gpu_info_text,
         )
     else:
-        sys.stdout.write("\n[AlarmHandler] Skipping Slack notification (SLACK_WEBHOOK_URL not set).\n")
+        sys.stdout.write("\n[AlarmHandler] Skipping Slack notification.\n")
 
     return return_code if return_code is not None else 1
