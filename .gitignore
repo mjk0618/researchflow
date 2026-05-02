@@ -2,5 +2,8 @@ __pycache__
 *.egg-info
 .env
 *.log
+logs/
 test_artifacts/
-tests/fixtures/
+tests/fixtures/logs/
+experiment_checkpoints/
+experimental_checkpoints/

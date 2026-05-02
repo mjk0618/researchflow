@@ -55,7 +55,7 @@ def _get_last_n_lines_from_file(file_path: str, n_lines: int = 50) -> str:
 
 def _get_kst_log_timestamp() -> str:
     kst = timezone(timedelta(hours=9))
-    return datetime.now(tz=kst).strftime("%Y%m%d_%H%M%S_KST")
+    return datetime.now(tz=kst).strftime("%Y%m%d_%H%M%S_%f_KST")
 
 
 def _resolve_log_file_path(target_script_full_path: str, log_dir: Optional[str] = None) -> str:
@@ -74,6 +74,7 @@ def execute_script_with_alarm(
         target_script_args: List[str],
         alarm_command_args_for_display: List[str],
         enable_logging: bool = False,
+        detach_logging: bool = True,
         notification_config: Optional[ResearchFlowConfig] = None,
     ) -> int:
 
@@ -87,7 +88,7 @@ def execute_script_with_alarm(
         sys.stderr.write(f"[AlarmHandler] Error resolving script path '{target_script_path}': {e}\n")
         return 1
 
-    if enable_logging and os.environ.get("_ALARM_INTERNAL_MONITOR") is None:
+    if enable_logging and detach_logging and os.environ.get("_ALARM_INTERNAL_MONITOR") is None:
         log_file_full_path = _resolve_log_file_path(target_script_full_path, notification_config.log_dir)
 
         new_env = os.environ.copy()
@@ -137,6 +138,8 @@ def execute_script_with_alarm(
     executed_command_display = f"alarm {' '.join(alarm_command_args_for_display)}"
     if enable_logging:
         executed_command_display = f"alarm --log {' '.join(alarm_command_args_for_display)}"
+        if not detach_logging:
+            executed_command_display = f"alarm --log --wait {' '.join(alarm_command_args_for_display)}"
 
 
     popen_kwargs: Dict[str, Any] = {

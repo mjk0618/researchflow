@@ -53,6 +53,8 @@ class SlackSetupTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(config.slack_destination, "dm")
         self.assertEqual(config.slack_user_id, "U123")
+        self.assertEqual(config.slack_user_name, "mj kang")
+        self.assertEqual(config.slack_user_query, "Minjae Kang")
 
 
 if __name__ == "__main__":

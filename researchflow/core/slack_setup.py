@@ -107,6 +107,11 @@ def _format_user(user: Dict[str, Any]) -> str:
     return f"{display_name} ({user.get('id')}, @{user.get('name', 'unknown')})"
 
 
+def _get_user_display_name(user: Dict[str, Any]) -> str:
+    profile = user.get("profile") or {}
+    return profile.get("display_name") or profile.get("real_name") or user.get("name") or user.get("id") or ""
+
+
 def _format_slack_api_error(e: Exception, target: str) -> str:
     if not isinstance(e, SlackApiError):
         return str(e)
@@ -313,6 +318,8 @@ def setup_dm_by_name(
     config_updates = {
         "slack_destination": "dm",
         "slack_user_id": selected_user_id,
+        "slack_user_name": _get_user_display_name(selected_user),
+        "slack_user_query": name_query,
         "slack_channel": "",
         "slack_team_id": auth.get("team_id"),
         "slack_team_name": auth.get("team"),

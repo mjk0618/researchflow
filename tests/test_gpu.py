@@ -34,8 +34,9 @@ class GpuInfoTests(unittest.TestCase):
         self.assertEqual(gpu_infos[0].processes[0].process.user, "alice")
 
         text = format_gpu_info_for_text(gpu_infos)
-        self.assertIn("GPU 0 | NVIDIA A100", text)
-        self.assertIn("pid 1234 | user alice", text)
+        self.assertIn("*GPU 0* | NVIDIA A100", text)
+        self.assertIn("VRAM 1024/40960 MiB (2.5%)", text)
+        self.assertIn("alice | pid 1234 | 900 MiB (2.2%) | elapsed 01:02:03", text)
 
 
 if __name__ == "__main__":

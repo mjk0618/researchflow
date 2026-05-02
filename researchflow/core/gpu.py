@@ -144,27 +144,45 @@ def collect_gpu_info() -> List[GpuInfo]:
     return gpu_infos
 
 
-def format_gpu_info_for_text(gpu_infos: List[GpuInfo], max_command_length: int = 96) -> str:
+def _to_float(value: str) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_percent(numerator: str, denominator: str) -> str:
+    used = _to_float(numerator)
+    total = _to_float(denominator)
+    if used is None or total is None or total <= 0:
+        return "N/A"
+    return f"{(used / total) * 100:.1f}%"
+
+
+def format_gpu_info_for_text(gpu_infos: List[GpuInfo]) -> str:
     if not gpu_infos:
         return ""
 
     lines: List[str] = []
     for gpu in gpu_infos:
+        memory_percent = _format_percent(gpu.memory_used_mib, gpu.memory_total_mib)
         lines.append(
-            f"GPU {gpu.index} | {gpu.name} | "
-            f"{gpu.memory_used_mib}/{gpu.memory_total_mib} MiB | "
+            f"*GPU {gpu.index}* | {gpu.name}"
+        )
+        lines.append(
+            f"VRAM {gpu.memory_used_mib}/{gpu.memory_total_mib} MiB ({memory_percent}) | "
             f"util {gpu.utilization_gpu_percent}% | temp {gpu.temperature_gpu_c}C"
         )
         if not gpu.processes:
-            lines.append("  no active compute processes")
+            lines.append("Details: no active compute processes")
             continue
+
+        lines.append("Details:")
         for proc in gpu.processes:
-            command = proc.process.command
-            if len(command) > max_command_length:
-                command = command[: max_command_length - 24] + " ... [truncated]"
+            process_percent = _format_percent(proc.used_memory_mib, gpu.memory_total_mib)
             lines.append(
-                f"  pid {proc.pid} | user {proc.process.user} | "
-                f"{proc.used_memory_mib} MiB | elapsed {proc.process.elapsed} | {command}"
+                f"- {proc.process.user} | pid {proc.pid} | "
+                f"{proc.used_memory_mib} MiB ({process_percent}) | elapsed {proc.process.elapsed}"
             )
 
     return "\n".join(lines)

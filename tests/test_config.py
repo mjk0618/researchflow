@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from researchflow.core.config import load_config, write_default_config
+from researchflow.core.config import get_config_sources, load_config, write_default_config
 
 
 class ConfigTests(unittest.TestCase):
@@ -51,6 +51,24 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(data["slack_destination"], "auto")
         self.assertIn("slack_channel", data)
+
+    def test_config_sources_reports_active_write_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            sources = get_config_sources(str(config_path))
+
+        self.assertEqual(sources["active_write_path"], str(config_path))
+        self.assertEqual(sources["read_sources"][0]["path"], str(config_path))
+
+    def test_config_sources_respects_env_config_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "env_config.json"
+            with mock.patch.dict(os.environ, {"RESEARCHFLOW_CONFIG": str(config_path)}, clear=True):
+                with mock.patch("researchflow.core.config.ensure_dotenv_is_loaded"):
+                    sources = get_config_sources()
+
+        self.assertEqual(sources["active_write_path"], str(config_path))
+        self.assertEqual(sources["read_sources"][0]["path"], str(config_path))
 
 
 if __name__ == "__main__":

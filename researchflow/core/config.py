@@ -32,6 +32,8 @@ class ResearchFlowConfig:
     slack_webhook_url: Optional[str] = None
     slack_team_id: Optional[str] = None
     slack_team_name: Optional[str] = None
+    slack_user_name: Optional[str] = None
+    slack_user_query: Optional[str] = None
     log_dir: Optional[str] = None
     include_gpu: bool = True
     mention_user: bool = False
@@ -45,11 +47,19 @@ def get_project_config_path() -> Path:
     return Path.cwd() / ".researchflow.json"
 
 
+def _resolve_write_config_path(config_path: Optional[str] = None) -> Path:
+    ensure_dotenv_is_loaded()
+    explicit_path = config_path or os.environ.get(RESEARCHFLOW_CONFIG_ENV_KEY)
+    return Path(explicit_path).expanduser() if explicit_path else get_default_config_path()
+
+
 def get_config_template() -> Dict[str, Any]:
     return {
         "slack_destination": "auto",
         "slack_channel": "C0123456789",
         "slack_user_id": "U0123456789",
+        "slack_user_name": "",
+        "slack_user_query": "",
         "slack_team_id": "",
         "slack_team_name": "",
         "log_dir": "",
@@ -127,6 +137,8 @@ def load_config(config_path: Optional[str] = None, **overrides: Any) -> Research
         slack_webhook_url=file_data.get("slack_webhook_url"),
         slack_team_id=file_data.get("slack_team_id"),
         slack_team_name=file_data.get("slack_team_name"),
+        slack_user_name=file_data.get("slack_user_name"),
+        slack_user_query=file_data.get("slack_user_query"),
         log_dir=file_data.get("log_dir"),
         include_gpu=_coerce_bool(file_data.get("include_gpu"), True),
         mention_user=_coerce_bool(file_data.get("mention_user"), False),
@@ -160,7 +172,7 @@ def load_config(config_path: Optional[str] = None, **overrides: Any) -> Research
 
 
 def write_default_config(path: Optional[str] = None, overwrite: bool = False) -> Path:
-    target_path = Path(path).expanduser() if path else get_default_config_path()
+    target_path = _resolve_write_config_path(path)
     if target_path.exists() and not overwrite:
         raise FileExistsError(f"Config file already exists: {target_path}")
 
@@ -172,7 +184,7 @@ def write_default_config(path: Optional[str] = None, overwrite: bool = False) ->
 
 
 def update_config_file(values: Dict[str, Any], path: Optional[str] = None) -> Path:
-    target_path = Path(path).expanduser() if path else get_default_config_path()
+    target_path = _resolve_write_config_path(path)
     existing_data: Dict[str, Any] = {}
     if target_path.exists():
         try:
@@ -189,3 +201,19 @@ def update_config_file(values: Dict[str, Any], path: Optional[str] = None) -> Pa
         json.dump(existing_data, f, indent=2)
         f.write("\n")
     return target_path
+
+
+def get_config_sources(config_path: Optional[str] = None) -> Dict[str, Any]:
+    sources = []
+    for path in _candidate_config_paths(config_path):
+        expanded_path = path.expanduser()
+        sources.append(
+            {
+                "path": str(expanded_path),
+                "exists": expanded_path.exists(),
+            }
+        )
+    return {
+        "active_write_path": str(_resolve_write_config_path(config_path)),
+        "read_sources": sources,
+    }

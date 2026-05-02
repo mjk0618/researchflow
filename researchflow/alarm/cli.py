@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from researchflow.core.config import load_config, update_config_file, write_default_config
+from researchflow.core.config import get_config_sources, load_config, update_config_file, write_default_config
 from researchflow.core.slack_setup import (
     check_slack_target,
     list_slack_channels,
@@ -33,8 +33,13 @@ def main():
     parser.add_argument(
         "--log",
         action="store_true",
-        help="Enable logging of script stdout/stderr to a file in the current directory. "
+        help="Enable logging of script stdout/stderr to a file under <script_dir>/logs or --log-dir. "
              "The script will be run in a way that mimics nohup behavior (detached, SIGHUP ignored on Unix)."
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        help="With --log, keep alarm in the foreground and wait for the target script. Useful for shell concurrency control.",
     )
     parser.add_argument("--config", help="Path to a ResearchFlow JSON config file.")
     parser.add_argument("--log-dir", help="Directory for --log output. Defaults to <script_dir>/logs.")
@@ -147,6 +152,7 @@ def main():
             ["--epochs", "1", "--total-runtime-factor", "0"],
             [str(sample_script_path), "--epochs", "1", "--total-runtime-factor", "0"],
             enable_logging=False,
+            detach_logging=True,
             notification_config=notification_config,
         )
         sys.exit(return_code)
@@ -185,6 +191,7 @@ def main():
         config_dict = asdict(notification_config)
         config_dict["slack_bot_token"] = _mask_secret(config_dict.get("slack_bot_token"))
         config_dict["slack_webhook_url"] = _mask_secret(config_dict.get("slack_webhook_url"))
+        config_dict["config_location"] = get_config_sources(args.config)
         sys.stdout.write(json.dumps(config_dict, indent=2))
         sys.stdout.write("\n")
         if not args.script_to_run:
@@ -197,6 +204,7 @@ def main():
     target_script_path = args.script_to_run
     target_script_args = args.script_arguments
     enable_logging = args.log
+    detach_logging = not args.wait
     
     alarm_command_args_for_display = [target_script_path] + target_script_args
 
@@ -205,6 +213,7 @@ def main():
         target_script_args,
         alarm_command_args_for_display,
         enable_logging=enable_logging,
+        detach_logging=detach_logging,
         notification_config=notification_config,
     )
     sys.exit(return_code)

@@ -39,6 +39,12 @@ Use `--log` to run in the background and save stdout/stderr:
 alarm --log script.py --your-arg value
 ```
 
+Use `--log --wait` when a shell script should wait for the real experiment process:
+
+```bash
+alarm --log --wait script.py --your-arg value
+```
+
 ## Setup
 
 ```bash
@@ -65,6 +71,8 @@ The user config is saved to:
 ~/.config/researchflow/config.json
 ```
 
+`--print-config` also prints the config paths it read and the active write path. `alarm --setup "name"` stores both the detected Slack user ID and the matched Slack display name for easier inspection later.
+
 ## Logging
 
 `--log` writes stdout/stderr to a file and starts the script in the background.
@@ -76,7 +84,7 @@ alarm --log train.py --config configs/run.yaml
 Default log location:
 
 ```text
-<script_dir>/logs/{YYYYMMDD_HHMMSS_KST}_{script_name}.log
+<script_dir>/logs/{YYYYMMDD_HHMMSS_microseconds_KST}_{script_name}.log
 ```
 
 Use a custom log directory for one run:
@@ -118,13 +126,21 @@ alarm --gpu-info script.py
 alarm --no-gpu-info script.py
 ```
 
-`alarm` uses `nvidia-smi` when available and can include GPU name, VRAM usage, utilization, temperature, active compute PIDs, process owner, elapsed time, and command.
+`alarm` uses `nvidia-smi` when available and can include GPU name, VRAM usage, utilization, temperature, active compute PIDs, process owner, and elapsed time.
 
 Clean local test artifacts:
 
 ```bash
 rm -rf test_artifacts
 ```
+
+Run multiple alarm-wrapped sample jobs with shell-level concurrency control:
+
+```bash
+tests/scripts/alarm_parallel_example.sh 2 8
+```
+
+The first argument is the maximum number of logged jobs running at once. The second argument is the total number of runs. The script uses `alarm --log --wait`, so shell `wait` tracks the actual experiment lifetime while stdout/stderr are still saved to log files. Plain `alarm --log` still returns immediately after starting its monitor process.
 
 ## Additional Features
 

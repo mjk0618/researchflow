@@ -213,7 +213,7 @@ class AlarmSlackSender:
             return None
 
         formatted_gpu_text = self._format_slack_block_text(
-            f"```{gpu_info_text}```",
+            gpu_info_text,
             max_length=2950,
             is_mrkdwn=True,
         )
